@@ -25,15 +25,16 @@ sieving = function (srch_term = input$srch_term,
                                           limit = que_limit,
                                           verbose = FALSE)
   
+  
   #remove cases when pmcid is NA
-  search_results = search_results[complete.cases(search_results[,"pmcid"]),]
+  search_results = search_results[which(!is.na(search_results$pmcid)),]
   
   #remove non open access cases
   search_results = search_results[which(search_results$isOpenAccess == "Y"),]
   
   removeNotification(notif)
   
-  if (!is.null(search_results)) {
+  if (!is.null(search_results) & nrow(search_results >= 1)) {
     collected.data = tibble()
     #https://shiny.rstudio.com/articles/progress.html
     withProgress(message = 'Analyzing data', value = 0, {
@@ -50,19 +51,21 @@ sieving = function (srch_term = input$srch_term,
                             issue = search_results$issue[i],
                             journalVolume = search_results$journalVolume[i],
                             parag_num = seq(from = 1, length.out = length(paragraphs)),
-                            paragraphs = cleanFun(paragraphs),
-                            sentences = cleanFun(paragraphs))
-        
-        the_tibble = the_tibble %>%
+                            paragraphs = paragraphs,
+                            sentences = paragraphs)
+       
+         the_tibble = the_tibble %>%
           unnest_tokens(sentence,
                         sentences,
                         token = "regex",
+                        to_lower = FALSE,
                         pattern = "(?<!\\..|fig|Fig|i|e|al|Cat|cat|no|No|St|ver|Ver|Dr|dr)[.?!]\\s+")
-        #(?<!\\b(Fig|fig|i|e|St|al))\\.")
+        
+        the_tibble$token = cleanFun(stringr::str_to_lower(the_tibble$sentence))
         
         for (m in 1:length(dic1)){
           
-          matches.dic_1 = stringr::str_extract(string = the_tibble$sentence, pattern = sprintf("(?=.*\\b%s\\b).*",
+          matches.dic_1 = stringr::str_extract(string = the_tibble$token, pattern = sprintf("(?=.*\\b%s\\b).*",
                                                                                                dic1[m]))
           matches.dic_1 = matches.dic_1[!is.na(matches.dic_1)]
           
@@ -72,20 +75,20 @@ sieving = function (srch_term = input$srch_term,
                                                                                            dic2[n]))
             matches.dic_2 = matches.dic_2[!is.na(matches.dic_2)]
             
-            the_tibble = unique(the_tibble[which(the_tibble$sentence %in% matches.dic_2),])
+            the_tibble = unique(the_tibble[which(the_tibble$token %in% matches.dic_2),])
             
             collected.data = rbind(collected.data, the_tibble)
             
           }
         }
         
-        #find duplicated sentences
-        duplicates = data.frame(table(collected.data$sentence))
-        dupl.data = collected.data[collected.data$sentence %in% duplicates$Var1[duplicates$Freq > 1],]
+        #find duplicated tokens
+        duplicates = data.frame(table(collected.data$token))
+        dupl.data = collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1],]
         
-        #identify which of the duplicated sentences derived from the same paragraph
+        #identify which of the duplicated tokens derived from the same paragraph
         #that was somehow repeated
-        u_pars = tapply(dupl.data$paragraphs, dupl.data$sentence, FUN = function(x){
+        u_pars = tapply(dupl.data$paragraphs, dupl.data$token, FUN = function(x){
           #set the longest paragraph as a test string
           a_string = x[which(nchar(x) == max(nchar(x)))]
           tr_fl = c()
@@ -97,37 +100,41 @@ sieving = function (srch_term = input$srch_term,
           return(ret_st)
         })
         
-        #Remove the duplicated paragraphs
-        collected.data[collected.data$sentence %in% duplicates$Var1[duplicates$Freq > 1], "parag_num"] = 
-          collected.data[collected.data$sentence %in% duplicates$Var1[duplicates$Freq > 1] & collected.data$paragraphs %in% u_pars, "parag_num"]
+        if (nrow(collected.data > 1)){
+          #Remove the duplicated paragraphs
+          collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1], "parag_num"] = 
+            collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1] & collected.data$paragraphs %in% u_pars, "parag_num"]
+          
+          collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1], "paragraphs"] = 
+            collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1] & collected.data$paragraphs %in% u_pars, "paragraphs"] 
+          
+          collected.data = unique(collected.data)
+        }
         
-        collected.data[collected.data$sentence %in% duplicates$Var1[duplicates$Freq > 1], "paragraphs"] = 
-          collected.data[collected.data$sentence %in% duplicates$Var1[duplicates$Freq > 1] & collected.data$paragraphs %in% u_pars, "paragraphs"] 
-        
-        collected.data = unique(collected.data)
-        
-        collected.data$sentence = sapply(collected.data$sentence,
-                                         FUN = function(x){highlight(text = x, dic = dic1, color = "red")})
-        collected.data$sentence = sapply(collected.data$sentence,
-                                         FUN = function(x){highlight(text = x, dic = dic2, color = "yellow")})
-        collected.data$paragraphs = sapply(collected.data$paragraphs,
-                                         FUN = function(x){highlight(text = x, dic = dic1, color = "red")})
-        collected.data$paragraphs = sapply(collected.data$paragraphs,
+        if (nrow(collected.data > 0)){
+          collected.data$sentence = sapply(collected.data$sentence,
+                                           FUN = function(x){highlight(text = x, dic = dic1, color = "red")})
+          collected.data$sentence = sapply(collected.data$sentence,
                                            FUN = function(x){highlight(text = x, dic = dic2, color = "yellow")})
-        
-        
+          collected.data$paragraphs = sapply(collected.data$paragraphs,
+                                             FUN = function(x){highlight(text = x, dic = dic1, color = "red")})
+          collected.data$paragraphs = sapply(collected.data$paragraphs,
+                                             FUN = function(x){highlight(text = x, dic = dic2, color = "yellow")})
+          
+        }
         #https://shiny.rstudio.com/articles/progress.html
         incProgress(1/nrow(search_results))
       }
     })  
     
     if (nrow(collected.data) == 0) {
-      collected.data = "No matches"
+      
+      collected.data = "No sentences matches both dictionary were found"
     }
     
   } else {
     
-    collected.data = "No papers"
+    collected.data = "No papers matching your query were found"
     
   }
   
@@ -155,6 +162,9 @@ datatable_callback <- JS("
     return '<div style=\"padding: .5em;\">' +
            '<p><h4>' + d[4] + '</h4></p>' +
            '<p><h5>' + d[3] + '</h5></p>' +
+           '<p><h5><em>' + d[8] + ' ' + d[2] + ', ' + d[11] +
+              ' (' + d[10] + ')</em></p></h5>' +
+           '<p><h6><em><u>' + ' doi: ' + d[9] + '</u></em></h6></p>' +
            '<br>' + 
            '<p>' + d[6] + '</p>' + 
            '</div>';
