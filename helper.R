@@ -5,13 +5,18 @@ cleanFun = function(htmlString) {
 
 #Function to highlight text
 highlight <- function(text, dic, color) {
-  x <- unlist(strsplit(text, split = " ", fixed = TRUE))
-  x[tolower(x) %in% tolower(dic)] <- paste0("<strong><mark style = 'background-color: ",
-                                             color, "'>",
-                                             x[tolower(x) %in% tolower(dic)],
-                                             "</mark></strong>")
-  paste(x, collapse = " ")
-  
+  for (i in 1:length(dic)){
+  text = gsub(pattern = paste0("(?!(^<\\/mark><\\/strong>$))(\\b", dic[i], "\\b)(\\.|,|;|:)?"),
+              replacement = paste0("<strong><mark style = 'background-color: ",
+                                   color, "'>",
+                                   "\\2",
+                                   "</mark></strong>",
+                                   "\\3"),
+              x = text,
+              ignore.case = TRUE,
+              perl = TRUE)
+  }
+  return(text)
 }
 
 #Download records list function
