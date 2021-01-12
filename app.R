@@ -58,7 +58,7 @@ ui <- function(request){
                        #Number of papers to analyze
                        numericInput("que_limit",
                                     "Maximum number of records",
-                                    value = 3,
+                                    value = 10,
                                     min = 1,
                                     max = 3000,
                                     step = 1),

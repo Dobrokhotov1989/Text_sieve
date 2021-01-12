@@ -68,24 +68,21 @@ sieving = function (srch_term = input$srch_term,
         
         the_tibble$token = cleanFun(stringr::str_to_lower(the_tibble$sentence))
         
-        for (m in 1:length(dic1)){
-          
-          matches.dic_1 = stringr::str_extract(string = the_tibble$token, pattern = sprintf("(?=.*\\b%s\\b).*",
-                                                                                               dic1[m]))
-          matches.dic_1 = matches.dic_1[!is.na(matches.dic_1)]
-          
-          for (n in 1:length(dic2)){
-            
-            matches.dic_2 = stringr::str_extract(string = matches.dic_1, pattern = sprintf("(?=.*\\b%s\\b).*",
-                                                                                           dic2[n]))
-            matches.dic_2 = matches.dic_2[!is.na(matches.dic_2)]
-            
-            the_tibble = unique(the_tibble[which(the_tibble$token %in% matches.dic_2),])
-            
-            collected.data = rbind(collected.data, the_tibble)
-            
-          }
-        }
+
+        the_tibble$matched_dic1 = grepl(x = the_tibble$token, pattern = paste0("\\b(",
+                                                                               paste(dic1, collapse = "|"),
+                                                                               ")\\b"),
+                                        ignore.case = TRUE)
+        the_tibble$matched_dic2 = grepl(x = the_tibble$token, pattern = paste0("\\b(",
+                                                                               paste(dic2, collapse = "|"),
+                                                                               ")\\b"),
+                                        ignore.case = TRUE)
+        
+        collected.data = rbind(collected.data,
+                               unique(the_tibble[which(the_tibble$matched_dic1 == TRUE &
+                                                  the_tibble$matched_dic2 == TRUE),]))
+        
+        
         
         #find duplicated tokens
         duplicates = data.frame(table(collected.data$token))
@@ -105,17 +102,11 @@ sieving = function (srch_term = input$srch_term,
           return(ret_st)
         })
         
-        if (nrow(collected.data > 1)){
-          #Remove the duplicated paragraphs
-          collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1], "parag_num"] = 
-            collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1] & collected.data$paragraphs %in% u_pars, "parag_num"]
-          
-          collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1], "paragraphs"] = 
-            collected.data[collected.data$token %in% duplicates$Var1[duplicates$Freq > 1] & collected.data$paragraphs %in% u_pars, "paragraphs"] 
-          
-          collected.data = unique(collected.data)
-        }
-        
+        #Remove the duplicated paragraphs
+        collected.data = 
+          collected.data[which(!(collected.data$token %in% duplicates$Var1[duplicates$Freq > 1] & !(collected.data$paragraphs %in% u_pars))),]
+
+
         if (nrow(collected.data > 0)){
           collected.data$sentence = sapply(collected.data$sentence,
                                            FUN = function(x){highlight(text = x, dic = dic1, color = "red")})
